@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net"
+
+	"github.com/shamaton/msgpack/v2"
 )
 
 func main() {
@@ -24,6 +26,9 @@ func main() {
 
 }
 func handleConnection(conn net.Conn) {
+	type Struct struct {
+		String string
+	}
 	defer conn.Close()
 	buffer := make([]byte, 1024)
 	for {
@@ -32,7 +37,9 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("Could not set up tcp socket:", err)
 			return
 		}
-		fmt.Printf("Received %s:\n", buffer[:n])
+		resp := Struct{}
+		msgpack.Unmarshal(buffer[:n], &resp)
+		fmt.Printf("Received %s:\n", resp.String)
 	}
 
 }
