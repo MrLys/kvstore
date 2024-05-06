@@ -5,20 +5,26 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/shamaton/msgpack/v2"
 )
 
-type CommandPayload struct {
-	m   string
-	k   string
-	v   string
-	ttl string
-}
-type ResponsePayload struct {
-	c string
-	v string
-}
+type (
+	Payload struct {
+		String string
+	}
+	CommandPayload struct {
+		M   byte
+		K   string
+		V   string
+		Ttl string
+	}
+	ResponsePayload struct {
+		C string
+		V string
+	}
+)
 
 func main() {
 	listener, err := net.Listen("tcp", "localhost:9696")
@@ -44,28 +50,26 @@ func handleConnection(conn net.Conn, cache *sync.Map) {
 	buffer := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buffer)
+		start := time.Now()
 		if err != nil {
 			fmt.Println("Could not set up tcp socket:", err)
 			return
 		}
-		fmt.Println(fmt.Sprintf("Received data: %b", buffer[0]))
-		fmt.Println(fmt.Sprintf("Received data: %b", buffer[1]))
-		fmt.Println(fmt.Sprintf("Received data: %b", buffer[2]))
-		fmt.Println(fmt.Sprintf("Buffer contains %b, %d", buffer, n))
 		cmd, err := marshallCommand(buffer, n)
-		//if err != nil {
-		//	fmt.Println("Failed to marshallCommand", err)
-		//	return
-		//}
+		if err != nil {
+			fmt.Println("Failed to marshallCommand", err)
+			return
+		}
 		executeCommand(cmd, conn, cache)
+		elapsedTime := time.Since(start)
+		fmt.Printf("handleConnection took:  %s \n", elapsedTime)
 	}
-
 }
 
 func executeCommand(cmd CommandPayload, conn net.Conn, cache *sync.Map) {
-	if cmd.m == "1" {
+	if cmd.M == 0x2 {
 		fmt.Println("Got get command")
-		val, _ := cache.Load(cmd.k)
+		val, _ := cache.Load(cmd.K)
 		sVal, ok := val.(string)
 		fmt.Println(sVal)
 		if !ok {
@@ -73,19 +77,19 @@ func executeCommand(cmd CommandPayload, conn net.Conn, cache *sync.Map) {
 		}
 		writeResponse(conn, "1", sVal)
 		// get
-	} else if cmd.m == "2" {
+	} else if cmd.M == 0x1 {
 		fmt.Println("Got set command")
-		cache.Store(cmd.k, cmd.v)
+		cache.Store(cmd.K, cmd.V)
 		writeResponse(conn, "1", "")
 		// set
-	} else if cmd.m == "3" {
+	} else if cmd.M == 0x3 {
 		fmt.Println("Get clear command")
 		//clear
 	}
 }
 
 func writeResponse(conn net.Conn, code string, val string) (int, error) {
-	v, err := msgpack.Marshal(ResponsePayload{c: code, v: val})
+	v, err := msgpack.Marshal(ResponsePayload{C: code, V: val})
 	if err != nil {
 		return 1, err
 	}
@@ -95,17 +99,14 @@ func writeResponse(conn net.Conn, code string, val string) (int, error) {
 func marshallCommand(buffer []byte, n int) (cmd CommandPayload, err error) {
 	resp := CommandPayload{}
 	msgpack.Unmarshal(buffer[:n], &resp)
-	fmt.Println(fmt.Sprintf("Command contains %s", resp.m))
-	fmt.Println(fmt.Sprintf("Command contains %s", resp.v))
-	fmt.Println(fmt.Sprintf("Command contains %s", resp.k))
-	fmt.Println(fmt.Sprintf("Command contains %s", resp.ttl))
-	if resp.m == "1" {
+	fmt.Println("cmd", resp.M, resp.V, resp.K)
+	if resp.M == 0x2 {
 		// get
 		return resp, nil
-	} else if resp.m == "2" {
+	} else if resp.M == 0x1 {
 		// set
 		return resp, nil
-	} else if resp.m == "3" {
+	} else if resp.M == 0x3 {
 		//clear
 		return resp, nil
 	}
