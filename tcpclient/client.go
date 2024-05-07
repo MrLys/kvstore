@@ -7,23 +7,8 @@ import (
 	"net"
 	"os"
 
+	kvt "github.com/mrlys/kvstore-types"
 	"github.com/shamaton/msgpack/v2"
-)
-
-type (
-	Payload struct {
-		String string
-	}
-	CommandPayload struct {
-		M   byte
-		K   string
-		V   string
-		Ttl string
-	}
-	ResponsePayload struct {
-		C string
-		V string
-	}
 )
 
 func main() {
@@ -40,13 +25,13 @@ func main() {
 		fmt.Println("Enter greeting:")
 		text, _, _ := reader.ReadLine()
 		fmt.Println(fmt.Sprintf("Greeting form client: %s", text))
-		//var m byte
-		//if counter%2 == 0 {
-		//	m = 0x1
-		//} else {
-		//	m = 0x0
-		//}
-		v := &CommandPayload{M: 0x2, K: "test key", V: "test value, what elseee?", Ttl: "0"}
+		var m byte
+		if counter%2 == 0 {
+			m = 0x1
+		} else {
+			m = 0x0
+		}
+		v := &kvt.CommandPayload{M: 0x1, K: "test key", V: string(text), Ttl: "0"}
 		msg, err := json.Marshal(v)
 		if err != nil {
 			fmt.Println("Error during `json Marshal`", err)
@@ -75,7 +60,7 @@ func main() {
 		if err != nil {
 			return
 		}
-		resp := ResponsePayload{}
+		resp := kvt.ResponsePayload{}
 		msgpack.Unmarshal(buffer[:n], &resp)
 		if resp.C != "1" {
 			fmt.Println("Error during call.")

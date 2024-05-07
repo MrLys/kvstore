@@ -7,23 +7,8 @@ import (
 	"sync"
 	"time"
 
+	kvt "github.com/mrlys/kvstore-types"
 	"github.com/shamaton/msgpack/v2"
-)
-
-type (
-	Payload struct {
-		String string
-	}
-	CommandPayload struct {
-		M   byte
-		K   string
-		V   string
-		Ttl string
-	}
-	ResponsePayload struct {
-		C string
-		V string
-	}
 )
 
 func main() {
@@ -63,10 +48,11 @@ func handleConnection(conn net.Conn, cache *sync.Map) {
 		executeCommand(cmd, conn, cache)
 		elapsedTime := time.Since(start)
 		fmt.Printf("handleConnection took:  %s \n", elapsedTime)
+		return
 	}
 }
 
-func executeCommand(cmd CommandPayload, conn net.Conn, cache *sync.Map) {
+func executeCommand(cmd kvt.CommandPayload, conn net.Conn, cache *sync.Map) {
 	if cmd.M == 0x2 {
 		fmt.Println("Got get command")
 		val, _ := cache.Load(cmd.K)
@@ -83,21 +69,23 @@ func executeCommand(cmd CommandPayload, conn net.Conn, cache *sync.Map) {
 		writeResponse(conn, "1", "")
 		// set
 	} else if cmd.M == 0x3 {
+		cache.Delete(cmd.K)
 		fmt.Println("Get clear command")
+		writeResponse(conn, "1", "")
 		//clear
 	}
 }
 
 func writeResponse(conn net.Conn, code string, val string) (int, error) {
-	v, err := msgpack.Marshal(ResponsePayload{C: code, V: val})
+	v, err := msgpack.Marshal(kvt.ResponsePayload{C: code, V: val})
 	if err != nil {
 		return 1, err
 	}
 	return conn.Write(v)
 }
 
-func marshallCommand(buffer []byte, n int) (cmd CommandPayload, err error) {
-	resp := CommandPayload{}
+func marshallCommand(buffer []byte, n int) (cmd kvt.CommandPayload, err error) {
+	resp := kvt.CommandPayload{}
 	msgpack.Unmarshal(buffer[:n], &resp)
 	fmt.Println("cmd", resp.M, resp.V, resp.K)
 	if resp.M == 0x2 {
@@ -110,5 +98,5 @@ func marshallCommand(buffer []byte, n int) (cmd CommandPayload, err error) {
 		//clear
 		return resp, nil
 	}
-	return CommandPayload{}, errors.New("Not a valid command")
+	return kvt.CommandPayload{}, errors.New("Not a valid command")
 }
