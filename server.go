@@ -33,6 +33,10 @@ func main() {
 func handleConnection(conn net.Conn, cache *sync.Map) {
 	defer conn.Close()
 	buffer := make([]byte, 1024)
+
+	// handle inital payload
+	//
+	// handle new commands on exiting connction
 	for {
 		n, err := conn.Read(buffer)
 		start := time.Now()
@@ -53,7 +57,10 @@ func handleConnection(conn net.Conn, cache *sync.Map) {
 }
 
 func executeCommand(cmd kvt.CommandPayload, conn net.Conn, cache *sync.Map) {
-	if cmd.M == 0x2 {
+	if cmd.M == 0x4 {
+		fmt.Println("auth")
+		writeResponse(conn, "1", "OK")
+	} else if cmd.M == 0x2 {
 		fmt.Println("Got get command")
 		val, _ := cache.Load(cmd.K)
 		sVal, ok := val.(string)
@@ -88,7 +95,10 @@ func marshallCommand(buffer []byte, n int) (cmd kvt.CommandPayload, err error) {
 	resp := kvt.CommandPayload{}
 	msgpack.Unmarshal(buffer[:n], &resp)
 	fmt.Println("cmd", resp.M, resp.V, resp.K)
-	if resp.M == 0x2 {
+	if resp.M == 0x4 {
+		// auth
+		return resp, nil
+	} else if resp.M == 0x2 {
 		// get
 		return resp, nil
 	} else if resp.M == 0x1 {
