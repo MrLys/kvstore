@@ -73,6 +73,7 @@ func handleConnection(conn net.Conn, cache *sync.Map) {
 		}
 	}
 }
+
 func handleAuthenticationRequest(buffer []byte, n int, state map[string]string) error {
 	start := time.Now()
 	elapsedTime := time.Since(start)
@@ -92,6 +93,7 @@ func handleAuthenticationRequest(buffer []byte, n int, state map[string]string) 
 	}
 	return nil
 }
+
 func handleRequest(buffer []byte, n int, conn net.Conn, cache *sync.Map, state map[string]string) error {
 	start := time.Now()
 	cmd, err := marshallCommand(buffer, n, state)
@@ -133,6 +135,7 @@ func authenticate(addr string, key string, state map[string]string) error {
 	log("Invalid key(2)", state, res, key)
 	return errors.New("Invalid key")
 }
+
 func authenticateWithId(addr string, key string, state map[string]string) (string, error) {
 	res := strings.Split(key, ":")
 	if len(res) != 2 {
