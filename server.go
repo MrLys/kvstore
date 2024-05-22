@@ -57,6 +57,7 @@ func handleConnection(conn net.Conn, cache *sync.Map) {
 		log("Failed to handleRequest", state, err)
 		return
 	}
+	writeResponse(conn, "1", "OK")
 
 	for {
 		n, err := conn.Read(buffer)

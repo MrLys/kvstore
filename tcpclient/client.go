@@ -30,10 +30,12 @@ func spamServer() {
 			return
 		}
 		_, err = conn.Write(packedMsg)
+		fmt.Println("Auhtenticating")
 		if err != nil {
 			fmt.Println("Error writing to socket", err)
 			return
 		}
+		fmt.Println("Waiting for response")
 		n, err := conn.Read(buffer)
 		if err != nil {
 			fmt.Println("Error reading to from", err)
