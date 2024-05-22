@@ -1,71 +1,90 @@
 package main
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
-	"net"
-	"os"
-
+	uuid "github.com/google/uuid"
 	kvt "github.com/mrlys/kvstore-types"
 	"github.com/shamaton/msgpack/v2"
+	"net"
 )
 
 func main() {
-	reader := bufio.NewReader(os.Stdin)
+
+	go spamServer()
+}
+func spamServer() {
 	conn, err := net.Dial("tcp", "localhost:9696")
 	if err != nil {
 		fmt.Println("Error connecing to server:", err)
 		return
 	}
 	defer conn.Close()
-	counter := 0
-	for {
-		buffer := make([]byte, 1024)
-		fmt.Println("Enter greeting:")
-		text, _, _ := reader.ReadLine()
-		fmt.Println(fmt.Sprintf("Greeting form client: %s", text))
-		var m byte
-		if counter%2 == 0 {
-			m = 0x1
-		} else {
-			m = 0x0
-		}
-		v := &kvt.CommandPayload{M: 0x1, K: "test key", V: string(text), Ttl: "0"}
-		msg, err := json.Marshal(v)
-		if err != nil {
-			fmt.Println("Error during `json Marshal`", err)
-			return
-		}
-		fmt.Println("msg", string(msg))
-		//data := Payload{String: string(msg)}
-		packedMsg, err := msgpack.Marshal(v)
-		fmt.Println("packedMsg len", len(packedMsg))
+	buffer := make([]byte, 1024)
+	clientId := "e36c06a4-0cff-44a8-af81-24947fde2c5aa"
+	clientSecret := "q+6FHhAWInTXstGU5R6VWTt9aq+dtgbpy7h+fyRefpK6suzdkWCxXZ8G1+suDLOp1ngYU8VUh5bN+htvYIcR6u4+vdh7gKOEaVM4BvyhfnUfzqxZYDuLrA6xZUnKaPAq4dsJH/gdM5BNeYEMwtGfKhFykmZKuEx8Y367TBcmqQU="
+	v := &kvt.CommandPayload{M: 0x4, K: "", V: "", Ttl: "0", I: toId(clientId, clientSecret)}
+	packedMsg, err := msgpack.Marshal(v)
+	if err != nil {
 		fmt.Println("Error during Marshal", err)
-		if err != nil {
-			fmt.Println("Error during Marshal", err)
-		}
-		fmt.Println(fmt.Sprintf("packedMsg: %d", packedMsg))
-		_, err = conn.Write(packedMsg)
-		if err != nil {
-			fmt.Println("Error writing to socket", err)
-		}
-
-		counter++
-		if err != nil {
-			fmt.Println("Error connecing to server:", err)
-			return
-		}
-		n, err := conn.Read(buffer)
-		if err != nil {
-			return
-		}
-		resp := kvt.ResponsePayload{}
-		msgpack.Unmarshal(buffer[:n], &resp)
-		if resp.C != "1" {
-			fmt.Println("Error during call.")
-		}
-		fmt.Println(resp.V)
+		return
 	}
-
+	_, err = conn.Write(packedMsg)
+	if err != nil {
+		fmt.Println("Error writing to socket", err)
+		return
+	}
+	n, err := conn.Read(buffer)
+	if err != nil {
+		return
+	}
+	resp := kvt.ResponsePayload{}
+	msgpack.Unmarshal(buffer[:n], &resp)
+	if resp.C != "1" {
+		fmt.Println("Error during call.")
+	}
+	fmt.Println(resp.V)
+	fmt.Println(resp.I)
+	fmt.Println(resp.C)
+	fmt.Println("Calling set")
+	id := uuid.NewString()
+	mykey := uuid.NewString()
+	v = &kvt.CommandPayload{M: 0x1, K: mykey, V: id, Ttl: "0", I: toId(clientId, resp.I)}
+	packedMsg, err = msgpack.Marshal(v)
+	_, err = conn.Write(packedMsg)
+	if err != nil {
+		fmt.Println("Error writing to socket", err)
+	}
+	n, err = conn.Read(buffer)
+	if err != nil {
+		return
+	}
+	fmt.Println("Calling get")
+	v = &kvt.CommandPayload{M: 0x2, K: mykey, V: "", Ttl: "0", I: toId(clientId, resp.I)}
+	packedMsg, err = msgpack.Marshal(v)
+	if err != nil {
+		fmt.Println("Error during `json Marshal`", err)
+		return
+	}
+	_, err = conn.Write(packedMsg)
+	if err != nil {
+		fmt.Println("Error writing to socket", err)
+	}
+	n, err = conn.Read(buffer)
+	if err != nil {
+		return
+	}
+	resp = kvt.ResponsePayload{}
+	msgpack.Unmarshal(buffer[:n], &resp)
+	if resp.C != "1" {
+		fmt.Println("Error during call.")
+	}
+	fmt.Println(resp.V)
+	fmt.Println(resp.I)
+	fmt.Println(resp.C)
+	if resp.V != id {
+		fmt.Println("Error during get", resp.V, id)
+	}
+}
+func toId(clientId, secret string) string {
+	return clientId + ":" + secret
 }

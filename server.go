@@ -1,17 +1,30 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
+	uuid "github.com/google/uuid"
 	kvt "github.com/mrlys/kvstore-types"
 	"github.com/shamaton/msgpack/v2"
 )
 
+var clients = sync.Map{}
+var authenticatedClients = sync.Map{}
+var CommandMap = map[byte]string{
+	0x1: "set",
+	0x2: "get",
+	0x3: "clear",
+	0x4: "auth",
+}
+
 func main() {
+	clients.Store("e36c06a4-0cff-44a8-af81-24947fde2c5a", "q+6FHhAWInTXstGU5R6VWTt9aq+dtgbpy7h+fyRefpK6suzdkWCxXZ8G1+suDLOp1ngYU8VUh5bN+htvYIcR6u4+vdh7gKOEaVM4BvyhfnUfzqxZYDuLrA6xZUnKaPAq4dsJH/gdM5BNeYEMwtGfKhFykmZKuEx8Y367TBcmqQU=")
 	listener, err := net.Listen("tcp", "localhost:9696")
 	if err != nil {
 		fmt.Println("Could not set up tcp socket:", err)
@@ -33,80 +46,161 @@ func main() {
 func handleConnection(conn net.Conn, cache *sync.Map) {
 	defer conn.Close()
 	buffer := make([]byte, 1024)
-
-	// handle inital payload
+	state := map[string]string{}
+	// read first command. It should be auth request
 	//
-	// handle new commands on exiting connction
-	for {
-		n, err := conn.Read(buffer)
-		start := time.Now()
-		if err != nil {
-			fmt.Println("Could not set up tcp socket:", err)
-			return
-		}
-		cmd, err := marshallCommand(buffer, n)
-		if err != nil {
-			fmt.Println("Failed to marshallCommand", err)
-			return
-		}
-		executeCommand(cmd, conn, cache)
-		elapsedTime := time.Since(start)
-		fmt.Printf("handleConnection took:  %s \n", elapsedTime)
+	n, err := conn.Read(buffer)
+	requestId := uuid.NewString()
+	state["requestId"] = requestId
+	err = handleAuthenticationRequest(buffer, n, state)
+	if err != nil {
+		log("Failed to handleRequest", state, err)
 		return
 	}
+
+	for {
+		n, err := conn.Read(buffer)
+		requestId := uuid.NewString()
+		state["requestId"] = requestId
+		if err != nil {
+			log("Could not set up tcp socket:", state, err)
+			return
+		}
+		err = handleRequest(buffer, n, conn, cache, state)
+		if err != nil {
+			log("Failed to handleRequest", state, err)
+			return
+		}
+	}
+}
+func handleAuthenticationRequest(buffer []byte, n int, state map[string]string) error {
+	start := time.Now()
+	elapsedTime := time.Since(start)
+	log("handleConnection took:  %s", state, elapsedTime)
+	cmd, err := marshallCommand(buffer, n, state)
+	if err != nil {
+		log("Failed to marshallCommand", state, err)
+		return err
+	}
+	if cmd.M != 0x4 {
+		msg, err := json.Marshal(cmd)
+		if err != nil {
+			return errors.New("Invalid command, authentication request expected")
+		}
+		log("Invalid command, expected 0x4, got %s", state, string(msg))
+		return errors.New("Invalid command, authentication request expected")
+	}
+	return nil
+}
+func handleRequest(buffer []byte, n int, conn net.Conn, cache *sync.Map, state map[string]string) error {
+	start := time.Now()
+	cmd, err := marshallCommand(buffer, n, state)
+	if err != nil {
+		log("Failed to marshallCommand", state, err)
+		return err
+	}
+	err = executeCommand(cmd, conn, cache, state)
+	if err != nil {
+		log("Failed to executeCommand", state, err)
+		return err
+	}
+	elapsedTime := time.Since(start)
+	log("handleConnection took:  %s", state, elapsedTime)
+	return nil
 }
 
-func executeCommand(cmd kvt.CommandPayload, conn net.Conn, cache *sync.Map) {
+func log(msg string, state map[string]string, args ...interface{}) {
+	fmt.Printf("(%s) "+msg+"\n", state["requestId"], args)
+}
+
+func authenticate(addr string, key string, state map[string]string) error {
+	res := strings.Split(key, ":")
+	if len(res) != 2 {
+		log("Invalid key(1)", state, res, key)
+		return errors.New("Invalid key")
+	}
+	val, ok := clients.Load(res[0])
+	if ok && val == res[1] {
+		fmt.Println("Authorized")
+		authMap, ok := authenticatedClients.Load(addr)
+		if !ok {
+			authMap = map[string]string{}
+		}
+		authMap.(map[string]string)[res[0]] = uuid.New().String()
+		authenticatedClients.Store(addr, authMap)
+		return nil
+	}
+	log("Invalid key(2)", state, res, key)
+	return errors.New("Invalid key")
+}
+func authenticateWithId(addr string, key string, state map[string]string) (string, error) {
+	res := strings.Split(key, ":")
+	if len(res) != 2 {
+		log("Invalid key(3)", state, res, key)
+		return "", errors.New("Invalid key")
+	}
+	authMap, ok := authenticatedClients.Load(addr)
+	if !ok {
+		return "", errors.New("Not authenticated")
+	}
+	_, ok = authMap.(map[string]string)[res[0]]
+	if !ok {
+		return "", errors.New("Not authenticated")
+	}
+	newId := uuid.NewString()
+	authMap.(map[string]string)[res[0]] = newId
+	authenticatedClients.Store(addr, authMap)
+	return newId, nil
+}
+
+func executeCommand(cmd kvt.CommandPayload, conn net.Conn, cache *sync.Map, state map[string]string) error {
 	if cmd.M == 0x4 {
-		fmt.Println("auth")
+		fmt.Println(CommandMap[cmd.M])
+		err := authenticate(conn.RemoteAddr().String(), cmd.I, state)
+		if err != nil {
+			writeResponse(conn, "0", "Unauthorized")
+			return err
+		}
 		writeResponse(conn, "1", "OK")
 	} else if cmd.M == 0x2 {
-		fmt.Println("Got get command")
+		log("Got get command", state)
 		val, _ := cache.Load(cmd.K)
 		sVal, ok := val.(string)
 		fmt.Println(sVal)
 		if !ok {
-			return
+			return nil
 		}
 		writeResponse(conn, "1", sVal)
 		// get
 	} else if cmd.M == 0x1 {
-		fmt.Println("Got set command")
+		log("Got set command", state)
 		cache.Store(cmd.K, cmd.V)
 		writeResponse(conn, "1", "")
 		// set
 	} else if cmd.M == 0x3 {
 		cache.Delete(cmd.K)
-		fmt.Println("Get clear command")
+		log("Get clear command", state)
 		writeResponse(conn, "1", "")
 		//clear
 	}
+	return nil
 }
 
 func writeResponse(conn net.Conn, code string, val string) (int, error) {
-	v, err := msgpack.Marshal(kvt.ResponsePayload{C: code, V: val})
+	v, err := msgpack.Marshal(kvt.ResponsePayload{C: code, V: val, I: ""})
 	if err != nil {
 		return 1, err
 	}
 	return conn.Write(v)
 }
 
-func marshallCommand(buffer []byte, n int) (cmd kvt.CommandPayload, err error) {
+func marshallCommand(buffer []byte, n int, state map[string]string) (cmd kvt.CommandPayload, err error) {
 	resp := kvt.CommandPayload{}
 	msgpack.Unmarshal(buffer[:n], &resp)
 	fmt.Println("cmd", resp.M, resp.V, resp.K)
-	if resp.M == 0x4 {
-		// auth
-		return resp, nil
-	} else if resp.M == 0x2 {
-		// get
-		return resp, nil
-	} else if resp.M == 0x1 {
-		// set
-		return resp, nil
-	} else if resp.M == 0x3 {
-		//clear
-		return resp, nil
+	_, ok := CommandMap[resp.M]
+	if !ok {
+		return kvt.CommandPayload{}, errors.New("Not a valid command")
 	}
-	return kvt.CommandPayload{}, errors.New("Not a valid command")
+	return resp, nil
 }
