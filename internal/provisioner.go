@@ -74,7 +74,14 @@ func (p *ProvisioningServer) readProvisionedClients() {
 }
 
 func (p *ProvisioningServer) storeClients() {
-	os.WriteFile("store.json")
+	clientBytes, err := json.Marshal(&p.clients)
+	f, err := os.Create("store.json")
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer f.Close()
+
+	f.Write(clientBytes)
 
 }
 func (p *ProvisioningServer) authenticate(buffer []byte) error {
