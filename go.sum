@@ -1,8 +1,6 @@
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/mrlys/kvstore-types v0.0.5 h1:sEIDKZcArQryq9FD3Z61Zk4y4pB9GUS2MRf+AOX0V2k=
-github.com/mrlys/kvstore-types v0.0.5/go.mod h1:uPl32YAepQ7CyvsxWBmHztA/joH8D1YO7UNNhph0PnA=
-github.com/mrlys/kvstore-types v0.0.6 h1:8mbCIw/vlgcLhOfzOP0HNaUmrm8+721Zu6H+g57Vzvc=
-github.com/mrlys/kvstore-types v0.0.6/go.mod h1:uPl32YAepQ7CyvsxWBmHztA/joH8D1YO7UNNhph0PnA=
+github.com/mrlys/kvstore-types v0.0.7 h1:+KvtR1PoGIER1Y1zGyie/wbozGG5h2p1sPtB0MvcWyQ=
+github.com/mrlys/kvstore-types v0.0.7/go.mod h1:uPl32YAepQ7CyvsxWBmHztA/joH8D1YO7UNNhph0PnA=
 github.com/shamaton/msgpack/v2 v2.2.0 h1:IP1m01pHwCrMa6ZccP9B3bqxEMKMSmMVAVKk54g3L/Y=
 github.com/shamaton/msgpack/v2 v2.2.0/go.mod h1:6khjYnkx73f7VQU7wjcFS9DFjs+59naVWJv1TB7qdOI=

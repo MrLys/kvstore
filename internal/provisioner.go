@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	kvt "github.com/mrlys/kvstore-types"
 	"github.com/shamaton/msgpack/v2"
 	"ljos.app/msgpack-tcp/utils"
 )
@@ -84,10 +85,19 @@ func (p *ProvisioningServer) storeClients() {
 	f.Write(clientBytes)
 
 }
-func (p *ProvisioningServer) authenticate(buffer []byte) error {
-	msgpack.Unmarshal(buffer[:n], &resp)
-	return nil
+func (p *ProvisioningServer) authenticate(payload []byte) error {
+	var auth kvt.AuthProvisionPayload
+	err := msgpack.Unmarshal(payload, &auth)
+	if err != nil {
+		return err
+	}
+	val, ok := p.clients.Load(auth.I)
+	if ok && val == auth.S {
+		return nil
+	}
+	return errors.New("Invalid key and or secret")
 }
+
 func (p *ProvisioningServer) Authenticate(key string) error {
 	res := strings.Split(key, ":")
 	if len(res) != 2 {
