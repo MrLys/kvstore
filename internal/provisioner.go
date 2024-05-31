@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
@@ -26,7 +25,7 @@ type ProvisioningServer struct {
 	clients sync.Map
 }
 
-func (p *ProvisioningServer) start() {
+func (p *ProvisioningServer) Start() {
 	listener, err := net.Listen("tcp", "localhost:9697")
 	if err != nil {
 		fmt.Println("Could not set up tcp socket:", err)
