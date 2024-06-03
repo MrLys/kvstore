@@ -12,6 +12,7 @@ import (
 	uuid "github.com/google/uuid"
 	kvt "github.com/mrlys/kvstore-types"
 	"github.com/shamaton/msgpack/v2"
+	"ljos.app/msgpack-tcp/utils"
 )
 
 var clients = sync.Map{}
@@ -43,16 +44,16 @@ func main() {
 	}
 
 }
+
 func handleConnection(conn net.Conn, cache *sync.Map) {
 	defer conn.Close()
 	buffer := make([]byte, 1024)
 	state := map[string]string{}
 	// read first command. It should be auth request
-	//
-	n, err := conn.Read(buffer)
+	payload, err := utils.ReadFromConnection(buffer, conn)
 	requestId := uuid.NewString()
 	state["requestId"] = requestId
-	err = handleAuthenticationRequest(buffer, n, state)
+	err = handleAuthenticationRequest(payload, state)
 	if err != nil {
 		log("Failed to handleRequest", state, err)
 		return
@@ -60,14 +61,14 @@ func handleConnection(conn net.Conn, cache *sync.Map) {
 	writeResponse(conn, "1", "OK")
 
 	for {
-		n, err := conn.Read(buffer)
+		payload, err := utils.ReadFromConnection(buffer, conn)
 		requestId := uuid.NewString()
 		state["requestId"] = requestId
 		if err != nil {
 			log("Could not set up tcp socket:", state, err)
 			return
 		}
-		err = handleRequest(buffer, n, conn, cache, state)
+		err = handleRequest(payload, conn, cache, state)
 		if err != nil {
 			log("Failed to handleRequest", state, err)
 			return
@@ -75,11 +76,11 @@ func handleConnection(conn net.Conn, cache *sync.Map) {
 	}
 }
 
-func handleAuthenticationRequest(buffer []byte, n int, state map[string]string) error {
+func handleAuthenticationRequest(payload []byte, state map[string]string) error {
 	start := time.Now()
 	elapsedTime := time.Since(start)
 	log("handleConnection took:  %s", state, elapsedTime)
-	cmd, err := marshallCommand(buffer, n, state)
+	cmd, err := marshallCommand(payload, state)
 	if err != nil {
 		log("Failed to marshallCommand", state, err)
 		return err
@@ -95,9 +96,9 @@ func handleAuthenticationRequest(buffer []byte, n int, state map[string]string) 
 	return nil
 }
 
-func handleRequest(buffer []byte, n int, conn net.Conn, cache *sync.Map, state map[string]string) error {
+func handleRequest(payload []byte, conn net.Conn, cache *sync.Map, state map[string]string) error {
 	start := time.Now()
-	cmd, err := marshallCommand(buffer, n, state)
+	cmd, err := marshallCommand(payload, state)
 	if err != nil {
 		log("Failed to marshallCommand", state, err)
 		return err
@@ -113,7 +114,9 @@ func handleRequest(buffer []byte, n int, conn net.Conn, cache *sync.Map, state m
 }
 
 func log(msg string, state map[string]string, args ...interface{}) {
-	fmt.Printf("(%s) "+msg+"\n", state["requestId"], args)
+	if state["debug"] != "false" {
+		fmt.Printf("(%s) "+msg+"\n", state["requestId"], args)
+	}
 }
 
 func authenticate(addr string, key string, state map[string]string) error {
@@ -159,7 +162,7 @@ func authenticateWithId(addr string, key string, state map[string]string) (strin
 
 func executeCommand(cmd kvt.CommandPayload, conn net.Conn, cache *sync.Map, state map[string]string) error {
 	if cmd.M == 0x4 {
-		fmt.Println(CommandMap[cmd.M])
+		log("Got %s command", state, CommandMap[cmd.M])
 		err := authenticate(conn.RemoteAddr().String(), cmd.I, state)
 		if err != nil {
 			writeResponse(conn, "0", "Unauthorized")
@@ -167,23 +170,22 @@ func executeCommand(cmd kvt.CommandPayload, conn net.Conn, cache *sync.Map, stat
 		}
 		writeResponse(conn, "1", "OK")
 	} else if cmd.M == 0x2 {
-		log("Got get command", state)
+		log("Got %s command", state, CommandMap[cmd.M])
 		val, _ := cache.Load(cmd.K)
 		sVal, ok := val.(string)
-		fmt.Println(sVal)
 		if !ok {
 			return nil
 		}
 		writeResponse(conn, "1", sVal)
 		// get
 	} else if cmd.M == 0x1 {
-		log("Got set command", state)
+		log("Got %s command", state, CommandMap[cmd.M])
 		cache.Store(cmd.K, cmd.V)
 		writeResponse(conn, "1", "")
 		// set
 	} else if cmd.M == 0x3 {
+		log("Got %s command", state, CommandMap[cmd.M])
 		cache.Delete(cmd.K)
-		log("Get clear command", state)
 		writeResponse(conn, "1", "")
 		//clear
 	}
@@ -198,10 +200,10 @@ func writeResponse(conn net.Conn, code string, val string) (int, error) {
 	return conn.Write(v)
 }
 
-func marshallCommand(buffer []byte, n int, state map[string]string) (cmd kvt.CommandPayload, err error) {
+func marshallCommand(payload []byte, state map[string]string) (cmd kvt.CommandPayload, err error) {
 	resp := kvt.CommandPayload{}
-	msgpack.Unmarshal(buffer[:n], &resp)
-	fmt.Println("cmd", resp.M, resp.V, resp.K)
+	msgpack.Unmarshal(payload, &resp)
+	log("cmd", state, resp.M, resp.V, resp.K)
 	_, ok := CommandMap[resp.M]
 	if !ok {
 		return kvt.CommandPayload{}, errors.New("Not a valid command")
